@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Users {
+  id       Int      @unique @default(autoincrement())
+  username String   @unique
+  password String
+  orders   Orders[]
+}
+
+model Orders {
+  id                 Int     @unique @default(autoincrement())
+  userId             Int
+  user               Users   @relation(fields: [userId], references: [id])
+  side               SIDE
+  types              TYPES
+  stockId            Int
+  stock              stocks  @relation(fields: [stockId], references: [id])
+  price              Int
+  qty                Int
+  filledQty          Int
+  status             STATUS
+  buyOrder  fills[] @relation("buyOrderRelation")
+  sellOrder fills[] @relation("sellOrderRelation")
+}
+
+model stocks {
+  id     Int      @unique @default(autoincrement())
+  title  String
+  symbol String
+  order  Orders[]
+  fill   fills[]
+}
+
+model fills {
+  id          Int    @unique @default(autoincrement())
+  stockId     Int
+  stock       stocks @relation(references: [id], fields: [stockId])
+  price       Int
+  qty         Int
+  buyOrderId  Int
+  sellOrderId Int
+  buyOrder    Orders @relation("buyOrderRelation", fields: [buyOrderId], references: [id])
+  sellOrder   Orders @relation("sellOrderRelation", fields: [sellOrderId], references: [id])
+}
+
+enum SIDE {
+  BUY
+  SELL
+}
+
+enum TYPES {
+  LIMIT
+  MARKET
+}
+
+enum STATUS {
+  FILLED
+  PARTIALLY
+  EMPTY
+}
