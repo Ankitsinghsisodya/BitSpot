@@ -27,7 +27,7 @@ model Orders {
   types              TYPES
   stockId            Int
   stock              stocks  @relation(fields: [stockId], references: [id])
-  price              Int
+  price              Int?
   qty                Int
   filledQty          Int
   status             STATUS

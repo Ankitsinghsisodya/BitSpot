@@ -175,32 +175,88 @@ export interface returnedDataType {
     filledQty: number,
     fills: fill[],
     orderId: number,
-    totalPrice:number
+    totalPrice: number
 
 }
 interface fill {
     stocks: string,
-    userId: number,
+    buyOrderId: number,
+    sellOrderId: number,
     qty: number,
     filledQty: number,
     orderId: number,
+    price: number
 }
 
-async function createOrderInDb(userId: number, type: "market" | "limit", price: number, qty: number, market_id: string, side: "buy" | "sell", orderId: number, fills: fill[], filledQty: number, stockId:number) {
- 
+interface createOrderParams {
+    userId: number,
+    orderId: number,
+    side: "buy" | "sell",
+    type: "market" | "limit",
+    stockId: number,
+    price: number | undefined,
+    qty: number,
+    filledQty: number,
+}
+function getOrderStatus(filledQty: number, qty: number): STATUS {
+    if (filledQty === qty) return STATUS.FILLED;
+    if (filledQty === 0) return STATUS.EMPTY;
+    return STATUS.FILLED;
+}
+
+function toSideEnum(side: "buy" | "sell"): SIDE {
+    if (side === 'buy') return SIDE.BUY;
+    return SIDE.SELL;
+}
+
+function toTypesEnum(type: "market" | "limit"): TYPES {
+    if (type === "market")
+        return TYPES.MARKET;
+    return TYPES.LIMIT;
+}
+async function createOrderInDb(params: createOrderParams) {
+    const { userId, orderId, side, type, stockId, price, qty, filledQty } = params;
     await prisma.orders.create({
         data: {
             id: orderId,
             userId,
-            side: ((side=="buy")?SIDE.BUY:SIDE.SELL),
-            types :(type==="market"?TYPES.MARKET:TYPES.LIMIT) ,
-            stockId, //
-            price, //
+            side: toSideEnum(side),
+            types: toTypesEnum(type),
+            stockId,
+            price,
             qty,
             filledQty,
-            status: ((filledQty === 0)?STATUS.EMPTY:(filledQty<qty?STATUS.PARTIALLY:STATUS.FILLED))
+            status: getOrderStatus(filledQty, qty)
         }
     })
+}
+interface creatFillsAndUpdateOrderParams {
+    fillsForThisOrder: fill[],
+    stockId: number
+}
+async function createFillsAndUpdateOrder(params: creatFillsAndUpdateOrderParams) {
+    const { fillsForThisOrder, stockId } = params;
+    for (const fill of fillsForThisOrder) {
+
+        await prisma.fills.create({
+            data: {
+                stockId,
+                price: fill.price,
+                qty: fill.qty,
+                buyOrderId: fill.buyOrderId,
+                sellOrderId: fill.sellOrderId,
+            }
+        })
+
+        await prisma.orders.updateMany({
+            where: {
+                OR: [{ id: fill.buyOrderId }, { id: fill.sellOrderId }]
+            },
+            data: {
+                filledQty: { increment: fill.filledQty }
+            }
+        })
+    }
 }
 
 app.post("/order", async (req: Request, res: Response) => {
@@ -213,25 +269,25 @@ app.post("/order", async (req: Request, res: Response) => {
                 errors: parsed.error
             })
         }
-        if(!userId){
+        if (!userId) {
             return res.status(400).json({
-                success:false,
+                success: false,
                 message: "User is not logged in"
             })
         }
         const { type, price, qty, market_id, side } = parsed.data;
         const stock = await prisma.stocks.findFirst({
-            where:{
+            where: {
                 symbol: market_id
             }
-           });
-        if(!stock){
+        });
+        if (!stock) {
             return res.status(400).json({
-                success:false,
+                success: false,
                 message: "The stocks is not valid"
             })
         }
-        
+
         const stockId = stock.id;
         let identifier = Math.random();
         let pendingResponse = untilWeGotBack(identifier);
@@ -247,8 +303,21 @@ app.post("/order", async (req: Request, res: Response) => {
             message: "order placed"
         })
         // create order in db
-        createOrderInDb(userId, type, totalPrice, qty, market_id, side, orderId, fills, filledQty, stockId);
-        // create fills
+        createOrderInDb({
+            userId,
+            orderId,
+            side,
+            type,
+            stockId,
+            price,
+            qty,
+            filledQty
+        });
+        // create fills and update order
+        createFillsAndUpdateOrder({
+            fillsForThisOrder: fills,
+            stockId
+        })
 
     } catch (error) {
         res.status(500).json({

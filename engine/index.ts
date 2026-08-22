@@ -89,9 +89,7 @@ const orderRequest = z.object({
     queue_id: z.number()
 });
 type orderRequestType = z.infer<typeof orderRequest>
-interface fill {
 
-}
 // consume other elements
 // bids -> ask
 // ask -> bid
@@ -106,7 +104,7 @@ interface fill {
 
     // what is the value jisse chota lena h
     // what is the value jisse bada lena h
-    ASK -> increasing 
+    ASK -> increasing
     BID -> Decreasing me rkhege
 */
 // filltedQty, fills[{}]
@@ -117,10 +115,12 @@ interface returnUpdateOrderBook {
 }
 interface fill {
     stocks: string,
-    userId: number,
+    buyOrderId: number,
+    sellOrderId:number,
     qty: number,
     filledQty: number,
     orderId: number,
+    price:number
 }
 function rev(side: "ASK" | "BID"): "ASK" | "BID" {
     return (side === "ASK") ? "BID" : "ASK";
@@ -129,7 +129,33 @@ function getSide(market_id: string, side: "ASK" | "BID") {
     const market = ORDERBOOK[market_id] ?? { ASK: new Map(), BID: new Map() };
     return market[side];
 }
-function updateOrderBook(qty: number, price: number, side: "ASK" | "BID", market_id: string): returnUpdateOrderBook {
+interface userIdDetailsForFills {
+    buyOrderId: number,
+    sellOrderId:number
+}
+function userIdDetails(userId:number, userSittingOnOrderBookId:number, side:"ASK"|"BID"):userIdDetailsForFills{
+    if(side === "ASK"){
+        return {
+            buyOrderId  : userSittingOnOrderBookId,
+            sellOrderId : userId
+        }
+    }
+    else {
+        return {
+            buyOrderId: userId,
+            sellOrderId: userSittingOnOrderBookId
+        }
+    }
+}
+
+function getPriceForFill(side: "ASK"|"BID", priceForUser:number, priceForUserOnOrderbook:number):number {
+    if(side === "ASK"){
+        Math.max(priceForUser, priceForUserOnOrderbook);
+    }
+    return Math.min(priceForUser, priceForUserOnOrderbook);
+
+}
+function updateOrderBook(userId:number, qty: number, price: number, side: "ASK" | "BID", market_id: string): returnUpdateOrderBook {
 
     const temp = getSide(market_id, rev(side));
     let filledQty: number = 0;
@@ -147,11 +173,12 @@ function updateOrderBook(qty: number, price: number, side: "ASK" | "BID", market
         for (const orderItem of orders) {
             if (qty >= filledQty + orderItem.qty) {
                 fills.push({
-                    userId: orderItem.userId,
+                    ...userIdDetails(userId, orderItem.userId, side),
                     stocks: market_id,
                     qty: orderItem.qty,
                     filledQty: orderItem.qty,
                     orderId: orderItem.orderid,
+                    price:getPriceForFill(side, price, orderItem.price)
                 })
                 filledQty += orderItem.qty;
                 totalPrice += orderItem.qty * Number(pricePerItem);
@@ -159,11 +186,12 @@ function updateOrderBook(qty: number, price: number, side: "ASK" | "BID", market
             }
             else {
                 fills.push({
-                    userId: orderItem.userId,
+                    ...userIdDetails(userId, orderItem.userId, side),
                     stocks: market_id,
                     qty: orderItem.qty,
                     filledQty: orderItem.filledQty + (qty - filledQty),
-                    orderId: orderItem.orderid
+                    orderId: orderItem.orderid,
+                    price:getPriceForFill(side, price, orderItem.price)
                 });
                 orderItem.filledQty = orderItem.filledQty + (qty - filledQty);
                 qtyConsumed += qty - filledQty;
@@ -204,13 +232,13 @@ while (true) {
     const parsedResponse: orderRequestType = JSON.parse(response.element);
 
     // ask -> infinity
-    // bid -> 
+    // bid ->
     let { userId, type, price, qty, market_id, side, queue_id, identifer } = parsedResponse;
     if (type === "market")
         price = (side === "ASK") ? -Infinity : Infinity;
 
     // matching
-    const { filledQty, totalPrice, fills } = updateOrderBook(qty, price!, side, market_id)
+    const { filledQty, totalPrice, fills } = updateOrderBook(userId, qty, price!, side, market_id)
 
     // orderId Generation
     const orderId = Number(Date.now() + crypto.randomUUID());
