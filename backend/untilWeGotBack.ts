@@ -3,29 +3,34 @@ import { createClient } from "redis";
 import type { returnedDataType } from ".";
 
 const subscriberClient = await createClient()
-.on('error', err => console.log('Redis client Error', err))
-.connect()
+    .on('error', err => console.log('Redis client Error', err))
+    .connect()
 
 interface pendingResolvesType {
-    [key:number]: (value:returnedDataType) => void
+    [key: number]: (value: returnedDataType) => void
 }
 let pendingResolves: pendingResolvesType = {
 };
 
 export const queue_id = Math.random();
 
-async function pollQueue(){
+async function pollQueue() {
     const response = await subscriberClient.brPop("Response-queue" + queue_id, 1)
-    if(!response){
+    if (!response) {
         pollQueue();
     }
     else {
         const parsedResponse = JSON.parse(response.element);
-        if(parsedResponse && parsedResponse.identifier && pendingResolves[parsedResponse.identifier] && parsedResponse.filledQty)
-        {
+        if (parsedResponse && parsedResponse.identifier && pendingResolves[parsedResponse.identifier] && parsedResponse.filledQty) {
             const resolver = pendingResolves[parsedResponse.identifier];
-            if(resolver)
-            resolver(parsedResponse.filledQty);
+            if (resolver)
+                resolver({
+                    totalPrice:parsedResponse.totalPrice,
+                    filledQty: parsedResponse.filledQty,
+                    fills: parsedResponse.fills,
+                    orderId: parsedResponse.orderId
+                }
+                );
 
         }
     }
@@ -33,8 +38,8 @@ async function pollQueue(){
 
 pollQueue();
 
-export async function untilWeGotBack(identifier: number):Promise<returnedDataType>{
-    return new Promise((resolve, reject)=> {
-        pendingResolves[identifier] =  resolve;
+export async function untilWeGotBack(identifier: number): Promise<returnedDataType> {
+    return new Promise((resolve, reject) => {
+        pendingResolves[identifier] = resolve;
     })
 }

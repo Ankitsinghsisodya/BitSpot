@@ -5,6 +5,7 @@ import { queue_id, untilWeGotBack } from "./untilWeGotBack";
 import { password } from "bun";
 import { prisma } from "./db";
 import jwt from "jsonwebtoken";
+import { SIDE, STATUS, TYPES } from "./generated/prisma/enums";
 
 
 const app = express();
@@ -164,7 +165,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 // 500001
 const orderRequest = z.object({
     type: z.enum(["market", "limit"]),
-    price: z.number(),
+    price: z.number().optional(),
     qty: z.number(),
     market_id: z.string(),
     side: z.enum(["buy", "sell"])
@@ -172,6 +173,34 @@ const orderRequest = z.object({
 
 export interface returnedDataType {
     filledQty: number,
+    fills: fill[],
+    orderId: number,
+    totalPrice:number
+
+}
+interface fill {
+    stocks: string,
+    userId: number,
+    qty: number,
+    filledQty: number,
+    orderId: number,
+}
+
+async function createOrderInDb(userId: number, type: "market" | "limit", price: number, qty: number, market_id: string, side: "buy" | "sell", orderId: number, fills: fill[], filledQty: number, stockId:number) {
+ 
+    await prisma.orders.create({
+        data: {
+            id: orderId,
+            userId,
+            side: ((side=="buy")?SIDE.BUY:SIDE.SELL),
+            types :(type==="market"?TYPES.MARKET:TYPES.LIMIT) ,
+            stockId, //
+            price, //
+            qty,
+            filledQty,
+            status: ((filledQty === 0)?STATUS.EMPTY:(filledQty<qty?STATUS.PARTIALLY:STATUS.FILLED))
+        }
+    })
 }
 
 app.post("/order", async (req: Request, res: Response) => {
@@ -184,19 +213,43 @@ app.post("/order", async (req: Request, res: Response) => {
                 errors: parsed.error
             })
         }
-
+        if(!userId){
+            return res.status(400).json({
+                success:false,
+                message: "User is not logged in"
+            })
+        }
         const { type, price, qty, market_id, side } = parsed.data;
+        const stock = await prisma.stocks.findFirst({
+            where:{
+                symbol: market_id
+            }
+           });
+        if(!stock){
+            return res.status(400).json({
+                success:false,
+                message: "The stocks is not valid"
+            })
+        }
+        
+        const stockId = stock.id;
         let identifier = Math.random();
         let pendingResponse = untilWeGotBack(identifier);
         await publisherClient.lPush("incoming-order",
-            JSON.stringify({ type, price, qty, market_id, side, queue_id: queue_id, identifier }));
-        const returnedData = await pendingResponse;
+            JSON.stringify({ userId, type, price, qty, market_id, side, queue_id: queue_id, identifier }));
+        const returnedData: returnedDataType = await pendingResponse;
+
+        const { filledQty, fills, orderId, totalPrice } = returnedData;
 
         res.status(201).json({
             success: true,
-            filledQty: returnedData.filledQty,
+            filledQty,
             message: "order placed"
         })
+        // create order in db
+        createOrderInDb(userId, type, totalPrice, qty, market_id, side, orderId, fills, filledQty, stockId);
+        // create fills
+
     } catch (error) {
         res.status(500).json({
             success: false,
