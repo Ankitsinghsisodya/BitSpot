@@ -13,14 +13,10 @@ import { createFillsAndUpdateOrder, createOrderInDb } from "../utilites/orderHel
 import { queue_id } from "../constants";
 
 export const getFillForSymbol = asyncHandler(async (req: Request, res: Response) => {
-    try {
         const { userId } = req;
         const symbol = req.params.symbol;
         if (!symbol) {
-            return res.status(400).json({
-                success: false,
-                message: "The symbol is required"
-            })
+            throw new ApiError(400, "The symbol is required");
         }
         const stock = await prisma.stocks.findFirst({
             where: {
@@ -28,10 +24,7 @@ export const getFillForSymbol = asyncHandler(async (req: Request, res: Response)
             }
         })
         if (!stock) {
-            return res.status(400).json({
-                success: false,
-                message: "The symbol is not valid"
-            })
+            throw new ApiError(400, "the symbol is not valid");
         }
         const fills = await prisma.fills.findMany({
             where: {
@@ -43,16 +36,7 @@ export const getFillForSymbol = asyncHandler(async (req: Request, res: Response)
 
             }
         })
-        return res.status(200).json({
-            success: true,
-            fills
-        })
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            error: error instanceof Error ? error.stack : error
-        })
-    }
+        return new ApiResponse(200, fills);
 })
 
 
@@ -109,12 +93,9 @@ export const createOrder =  asyncHandler(async (req: Request, res: Response) => 
     const returnedData: returnedDataType = await pendingResponse;
 
     const { filledQty, fills, orderId, totalPrice, error } = returnedData;
-
-
-    new ApiResponse(201, filledQty, "Order placed");
-
+    
     // create order in db
-    createOrderInDb({
+    await createOrderInDb({
         userId,
         orderId,
         side,
@@ -125,9 +106,9 @@ export const createOrder =  asyncHandler(async (req: Request, res: Response) => 
         filledQty
     });
     // create fills and update order
-    createFillsAndUpdateOrder({
+    await createFillsAndUpdateOrder({
         fillsForThisOrder: fills,
         stockId
     })
-
+    return new ApiResponse(201, filledQty, "Order placed");
 });

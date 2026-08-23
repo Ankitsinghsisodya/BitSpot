@@ -5,7 +5,7 @@ import { prisma } from "./db";
 export function getOrderStatus(filledQty: number, qty: number): STATUS {
     if (filledQty === qty) return STATUS.FILLED;
     if (filledQty === 0) return STATUS.EMPTY;
-    return STATUS.FILLED;
+    return STATUS.PARTIALLY;
 }
 
 export function toSideEnum(side: "buy" | "sell"): SIDE {
