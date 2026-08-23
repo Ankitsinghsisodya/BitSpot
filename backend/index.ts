@@ -172,6 +172,7 @@ const orderRequest = z.object({
 })
 
 export interface returnedDataType {
+    error: ApiError,
     filledQty: number,
     fills: fill[],
     orderId: number,
@@ -234,6 +235,26 @@ interface creatFillsAndUpdateOrderParams {
     fillsForThisOrder: fill[],
     stockId: number
 }
+
+class ApiError extends Error {
+    statusCode: number;
+    success: boolean;
+    errors: any
+    constructor(statusCode: number, message = "Something went wrong", errors = [], stack = "") {
+        super(message);
+        this.statusCode = statusCode;
+        this.success = false;
+        this.errors = errors;
+        this.message = message;
+
+        if (stack) {
+            this.stack = stack;
+        }
+        else {
+            Error.captureStackTrace(this, this.constructor);
+        }
+    }
+}
 async function createFillsAndUpdateOrder(params: creatFillsAndUpdateOrderParams) {
     const { fillsForThisOrder, stockId } = params;
     for (const fill of fillsForThisOrder) {
@@ -295,13 +316,22 @@ app.post("/order", async (req: Request, res: Response) => {
             JSON.stringify({ userId, type, price, qty, market_id, side, queue_id: queue_id, identifier }));
         const returnedData: returnedDataType = await pendingResponse;
 
-        const { filledQty, fills, orderId, totalPrice } = returnedData;
+        const { filledQty, fills, orderId, totalPrice, error } = returnedData;
 
-        res.status(201).json({
-            success: true,
-            filledQty,
-            message: "order placed"
-        })
+        if (error) {
+            res.status(error.statusCode).json({
+                success: false,
+                filledQty,
+                message: error.message
+            })
+        }
+        else {
+            res.status(201).json({
+                success: true,
+                filledQty,
+                message: "order placed"
+            })
+        }
         // create order in db
         createOrderInDb({
             userId,
@@ -327,27 +357,68 @@ app.post("/order", async (req: Request, res: Response) => {
     }
 })
 
-
+// update order to be cancelled in db and delete from orderbook
 app.delete("order/:orderId", (req: Request, res: Response) => {
 
 })
-
+// get the orders from the orderbook and orders
 app.get("/orders", (req: Request, res: Response) => {
 
 })
-
+// get the order of the particular symbol from the orders db
 app.get("/orderbook/:symbol", (req: Request, res: Response) => {
 
 })
 
-app.get("/fills/:symbol", (req: Request, res: Response) => {
+app.get("/fills/:symbol", async (req: Request, res: Response) => {
+    try {
+        const { userId } = req;
+        const symbol = req.params.symbol;
+        if (!symbol) {
+            return res.status(400).json({
+                success: false,
+                message: "The symbol is required"
+            })
+        }
+        const stock = await prisma.stocks.findFirst({
+            where: {
+                symbol: symbol as string
+            }
+        })
+        if (!stock) {
+            return res.status(400).json({
+                success: false,
+                message: "The symbol is not valid"
+            })
+        }
+        const fills = await prisma.fills.findMany({
+            where: {
+                OR: [
+                    { buyOrder: { userId } },
+                    { sellOrder: { userId } }
+                ],
+                stockId: stock.id
 
+            }
+        })
+        return res.status(200).json({
+            success: true,
+            fills
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.stack : error
+        })
+    }
 })
 
+// kya bhejan h ?
 app.get("/stocks", (req: Request, res: Response) => {
 
 })
 
+// engine se lake bhej dena h
 app.get("/balance", (req: Request, res: Response) => {
 
 })

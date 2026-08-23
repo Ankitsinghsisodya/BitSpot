@@ -1,13 +1,14 @@
 import { createClient } from "redis";
-import { z } from "zod";
+import { number, z } from "zod";
 
 const BALANCES: balancesTypes = {}
 interface balancesTypes {
     [userId: number]: UserBalance
 }
+
 interface UserBalance {
-    usd: number,
-    stocks: { [symbol: string]: number }
+    available: number,
+    locked: number
 }
 const ORDERBOOK: orderbookType = {
     SOL: {
@@ -116,11 +117,27 @@ interface returnUpdateOrderBook {
 interface fill {
     stocks: string,
     buyOrderId: number,
-    sellOrderId:number,
+    sellOrderId: number,
     qty: number,
     filledQty: number,
     orderId: number,
-    price:number
+    price: number
+}
+function getBalanceForUser(userId: number): number {
+    if (!BALANCES[userId]) BALANCES[userId] = { available: 0, locked: 0 };
+    return BALANCES[userId]["available"] - BALANCES[userId]["locked"];
+}
+function init(userId: number) {
+    if (!BALANCES[userId]) BALANCES[userId] = { available: 0, locked: 0 };
+}
+function lockuserBalance(userId: number, balance: number): void {
+
+    BALANCES[userId]!.locked += balance;
+    BALANCES[userId]!.available -= balance;
+}
+function unlockBalance(userId: number) {
+    BALANCES[userId]!.available += BALANCES[userId]!.locked;
+    BALANCES[userId]!.locked = 0;
 }
 function rev(side: "ASK" | "BID"): "ASK" | "BID" {
     return (side === "ASK") ? "BID" : "ASK";
@@ -131,13 +148,13 @@ function getSide(market_id: string, side: "ASK" | "BID") {
 }
 interface userIdDetailsForFills {
     buyOrderId: number,
-    sellOrderId:number
+    sellOrderId: number
 }
-function userIdDetails(userId:number, userSittingOnOrderBookId:number, side:"ASK"|"BID"):userIdDetailsForFills{
-    if(side === "ASK"){
+function userIdDetails(userId: number, userSittingOnOrderBookId: number, side: "ASK" | "BID"): userIdDetailsForFills {
+    if (side === "ASK") {
         return {
-            buyOrderId  : userSittingOnOrderBookId,
-            sellOrderId : userId
+            buyOrderId: userSittingOnOrderBookId,
+            sellOrderId: userId
         }
     }
     else {
@@ -148,21 +165,22 @@ function userIdDetails(userId:number, userSittingOnOrderBookId:number, side:"ASK
     }
 }
 
-function getPriceForFill(side: "ASK"|"BID", priceForUser:number, priceForUserOnOrderbook:number):number {
-    if(side === "ASK"){
+function getPriceForFill(side: "ASK" | "BID", priceForUser: number, priceForUserOnOrderbook: number): number {
+    if (side === "ASK") {
         Math.max(priceForUser, priceForUserOnOrderbook);
     }
     return Math.min(priceForUser, priceForUserOnOrderbook);
 
 }
-function updateOrderBook(userId:number, qty: number, price: number, side: "ASK" | "BID", market_id: string): returnUpdateOrderBook {
+function updateOrderBook(userId: number, qty: number, price: number, side: "ASK" | "BID", market_id: string): returnUpdateOrderBook {
 
     const temp = getSide(market_id, rev(side));
     let filledQty: number = 0;
     let fills: fill[] = [];
     let totalPrice = 0;
     // >> price se jada wala me le lenge
-    for (const [pricePerItem, DetailOfItem] of temp.entries()) {
+    const sortedEntries = [...temp.entries()].sort(([a], [b]) =>((side==="ASK") ?a-b:b-a));
+    for (const [pricePerItem, DetailOfItem] of sortedEntries) {
         // x, x-1, x-2
         if (side === "ASK" && Number(pricePerItem) < price) break;
         // x, x+1, x+2
@@ -171,32 +189,34 @@ function updateOrderBook(userId:number, qty: number, price: number, side: "ASK" 
         const orders = DetailOfItem.orders;
         let qtyConsumed = 0;
         for (const orderItem of orders) {
-            if (qty >= filledQty + orderItem.qty) {
+            if (qty >= filledQty + orderItem.qty && orderItem.price <= BALANCES[userId]!.locked) {
                 fills.push({
                     ...userIdDetails(userId, orderItem.userId, side),
                     stocks: market_id,
                     qty: orderItem.qty,
                     filledQty: orderItem.qty,
                     orderId: orderItem.orderid,
-                    price:getPriceForFill(side, price, orderItem.price)
+                    price: getPriceForFill(side, price, orderItem.price)
                 })
                 filledQty += orderItem.qty;
                 totalPrice += orderItem.qty * Number(pricePerItem);
                 qtyConsumed += orderItem.qty;
+                BALANCES[userId]!.locked -= orderItem.price;
             }
-            else {
+            else if(orderItem.price <= BALANCES[userId]!.locked){
                 fills.push({
                     ...userIdDetails(userId, orderItem.userId, side),
                     stocks: market_id,
                     qty: orderItem.qty,
                     filledQty: orderItem.filledQty + (qty - filledQty),
                     orderId: orderItem.orderid,
-                    price:getPriceForFill(side, price, orderItem.price)
+                    price: getPriceForFill(side, price, orderItem.price)
                 });
                 orderItem.filledQty = orderItem.filledQty + (qty - filledQty);
                 qtyConsumed += qty - filledQty;
                 totalPrice += (qty - filledQty) * Number(pricePerItem);
                 filledQty = qty;
+                BALANCES[userId]!.locked -= orderItem.price;
             }
         }
         DetailOfItem.totalQuantity -= qtyConsumed;
@@ -209,10 +229,10 @@ function updateOrderBook(userId:number, qty: number, price: number, side: "ASK" 
 }
 // ASK -> increasing order me h
 // BID -> Decreasing order me h
-function addInOrderBook(userId: number, side: "ASK" | "BID", price: number, qty: number, filledQty:number, market_id: string, orderId:number) {
+function addInOrderBook(userId: number, side: "ASK" | "BID", price: number, qty: number, filledQty: number, market_id: string, orderId: number) {
     const market = getSide(market_id, side);
-    if(!market.has(price)){
-        market.set(price,{totalQuantity:0,ordres:[]});
+    if (!market.has(price)) {
+        market.set(price, { totalQuantity: 0, ordres: [] });
     }
     const priceLevel = market.get(price);
     priceLevel.totalQuantity += qty;
@@ -221,8 +241,32 @@ function addInOrderBook(userId: number, side: "ASK" | "BID", price: number, qty:
         qty,
         filledQty,
         orderId,
-        createdAt:Date.now()
+        createdAt: Date.now()
     })
+}
+class APiError extends Error {
+    statusCode: number;
+    success: boolean;
+    errors: any;
+    constructor(statusCode: number, message = "something went wrong", errors = [], stack = "") {
+        super(message);
+        this.statusCode = statusCode;
+        this.success = false;
+        this.errors = errors;
+        this.message = message;
+
+        if (stack) {
+            this.stack = stack
+        }
+        else {
+            Error.captureStackTrace(this, this.constructor);
+        }
+    }
+
+}
+interface errorType {
+    status: number,
+    message: string
 }
 while (true) {
     const response = await subscriberClient.brPop('incoming-order', 1);
@@ -231,25 +275,45 @@ while (true) {
     }
     const parsedResponse: orderRequestType = JSON.parse(response.element);
 
+    // error
+    const error: APiError[] = [];
+
     // ask -> infinity
     // bid ->
     let { userId, type, price, qty, market_id, side, queue_id, identifer } = parsedResponse;
     if (type === "market")
         price = (side === "ASK") ? -Infinity : Infinity;
 
+    // orderId Generation
+    const orderId = Number(Date.now() + crypto.randomUUID());
+    init(userId);
+    if (side === 'BID' && type === "limit") {
+        if (price! * qty <= BALANCES[userId]!.available) {
+            lockuserBalance(userId, price! * qty);
+        }
+        else {
+            error.push(new APiError(403, "The available balance is not enough "))
+        }
+    }
+    else if (side === "BID" && type === "market") {
+        lockuserBalance(userId, BALANCES[userId]!.available);
+    }
+
     // matching
     const { filledQty, totalPrice, fills } = updateOrderBook(userId, qty, price!, side, market_id)
 
-    // orderId Generation
-    const orderId = Number(Date.now() + crypto.randomUUID());
 
     // orderbook me limit order dalna h if filletedQty < qty
     if (type === "limit" && filledQty < qty)
         addInOrderBook(userId, side, price!, qty, filledQty, market_id, orderId);
 
+    if (side === "BID" && type === "market") {
+        unlockBalance(userId);
+    }
+
     // sending it back to the backend
     await publisherClient.lPush("Response-queue" + parsedResponse.queue_id, JSON.stringify({
-        filledQty, totalPrice, fills, identifer, orderId
+        error, filledQty, totalPrice, fills, identifer, orderId
     }))
 }
 

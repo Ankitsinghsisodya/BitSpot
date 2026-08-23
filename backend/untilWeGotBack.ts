@@ -6,6 +6,10 @@ const subscriberClient = await createClient()
     .on('error', err => console.log('Redis client Error', err))
     .connect()
 
+const publisherClient = await createClient()
+    .on('error', err => console.log('Redis Client Error', err))
+    .connect();
+
 interface pendingResolvesType {
     [key: number]: (value: returnedDataType) => void
 }
@@ -21,17 +25,20 @@ async function pollQueue() {
     }
     else {
         const parsedResponse = JSON.parse(response.element);
-        if (parsedResponse && parsedResponse.identifier && pendingResolves[parsedResponse.identifier] && parsedResponse.filledQty) {
+        if (parsedResponse.identifier && pendingResolves[parsedResponse.identifier]) {
             const resolver = pendingResolves[parsedResponse.identifier];
             if (resolver)
                 resolver({
-                    totalPrice:parsedResponse.totalPrice,
+                    error: parsedResponse.error,
+                    totalPrice: parsedResponse.totalPrice,
                     filledQty: parsedResponse.filledQty,
                     fills: parsedResponse.fills,
                     orderId: parsedResponse.orderId
                 }
                 );
-
+        }
+        else {
+            await publisherClient.lPush("Response-queue" + queue_id, response.element);
         }
     }
 }
