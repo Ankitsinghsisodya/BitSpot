@@ -1,6 +1,8 @@
 import type { Value } from "@prisma/client/runtime/client";
 import { createClient } from "redis";
-import type { returnedDataType } from ".";
+import type { returnedDataType } from "../types/order.types";
+import { queue_id, QUEUE_NAMES } from "../constants";
+
 
 const subscriberClient = await createClient()
     .on('error', err => console.log('Redis client Error', err))
@@ -16,10 +18,10 @@ interface pendingResolvesType {
 let pendingResolves: pendingResolvesType = {
 };
 
-export const queue_id = Math.random();
+
 
 async function pollQueue() {
-    const response = await subscriberClient.brPop("Response-queue" + queue_id, 1)
+    const response = await subscriberClient.brPop(QUEUE_NAMES.RESPONSE_QUEUE + queue_id, 1)
     if (!response) {
         pollQueue();
     }
@@ -36,9 +38,6 @@ async function pollQueue() {
                     orderId: parsedResponse.orderId
                 }
                 );
-        }
-        else {
-            await publisherClient.lPush("Response-queue" + queue_id, response.element);
         }
     }
 }

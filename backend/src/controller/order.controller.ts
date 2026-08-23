@@ -1,0 +1,133 @@
+import type { Request, Response } from "express";
+import asyncHandler from "../utilites/asynchandler";
+import { prisma } from "../utilites/db";
+import ApiResponse from "../utilites/ApiResponse";
+import ApiError from "../utilites/ApiError";
+import * as z from "zod";
+import { untilWeGotBack } from "../utilites/untilWeGotBack";
+import { orderRequest } from "../schemas/order.schema";
+import { sendEngine } from "../utilites/sendEngine";
+import { EngineRequest } from "../types/engine.types";
+import type { returnedDataType } from "../types/order.types";
+import { createFillsAndUpdateOrder, createOrderInDb } from "../utilites/orderHelpers";
+import { queue_id } from "../constants";
+
+export const getFillForSymbol = asyncHandler(async (req: Request, res: Response) => {
+    try {
+        const { userId } = req;
+        const symbol = req.params.symbol;
+        if (!symbol) {
+            return res.status(400).json({
+                success: false,
+                message: "The symbol is required"
+            })
+        }
+        const stock = await prisma.stocks.findFirst({
+            where: {
+                symbol: symbol as string
+            }
+        })
+        if (!stock) {
+            return res.status(400).json({
+                success: false,
+                message: "The symbol is not valid"
+            })
+        }
+        const fills = await prisma.fills.findMany({
+            where: {
+                OR: [
+                    { buyOrder: { userId } },
+                    { sellOrder: { userId } }
+                ],
+                stockId: stock.id
+
+            }
+        })
+        return res.status(200).json({
+            success: true,
+            fills
+        })
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            error: error instanceof Error ? error.stack : error
+        })
+    }
+})
+
+
+export const deleteOrder = asyncHandler(async (req: Request, res: Response) => {
+
+})
+
+/*
+    body = {
+        type:           "market" | "limit",
+        price:          number | null,
+        qty:            number,
+        market_id:      string,
+        side:           "buy" | "sell"
+    }
+
+    @returns {
+        orderId: string,
+        filledQty: number,
+        averagePrice
+    }
+*/
+
+// 50.01
+
+// 500001
+// update order to be cancelled in db and delete from orderbook
+
+export const createOrder =  asyncHandler(async (req: Request, res: Response) => {
+    const { userId } = req;
+    const parsed = orderRequest.safeParse(req.body);
+
+    if (!parsed.success) {
+        throw new ApiError(400, "", [z.treeifyError(parsed.error)]);
+    }
+    if (!userId) {
+        throw new ApiError(400, "User is not logged in");
+    }
+    const { type, price, qty, market_id, side } = parsed.data;
+    const stock = await prisma.stocks.findFirst({
+        where: {
+            symbol: market_id
+        }
+    });
+    if (!stock) {
+        throw new ApiError(400, "The stocks is not valid");
+    }
+
+    const stockId = stock.id;
+    let identifier = Math.random();
+    let pendingResponse = untilWeGotBack(identifier);
+
+    sendEngine({ RequestType: EngineRequest.CREATEORDER, userId, type, price, qty, market_id, side, queue_id: queue_id, identifier });
+    const returnedData: returnedDataType = await pendingResponse;
+
+    const { filledQty, fills, orderId, totalPrice, error } = returnedData;
+
+
+    new ApiResponse(201, filledQty, "Order placed");
+
+    // create order in db
+    createOrderInDb({
+        userId,
+        orderId,
+        side,
+        type,
+        stockId,
+        price,
+        qty,
+        filledQty
+    });
+    // create fills and update order
+    createFillsAndUpdateOrder({
+        fillsForThisOrder: fills,
+        stockId
+    })
+
+});
