@@ -1,5 +1,5 @@
 import { BALANCES, ORDERBOOK } from "../state";
-import { publisherClient } from "../redisClient";
+import { sendtoBackend } from "../redisClient";
 import { APiError } from "../errors";
 import type { orderRequestType, userDetailsType, cancelOrderDetailsType, orderItem } from "../types";
 import { init, lockuserBalance, unlockBalance } from "./balance.service";
@@ -50,10 +50,6 @@ export async function createOrder(orderDetails: orderRequestType) {
             error, filledQty, totalPrice, fills, identifer, orderId
         }
     })
-}
-
-export async function sendtoBackend(queue_id: number, params: { data: { identifier: number, [key: string]: any } }) {
-    await publisherClient.lPush("Response-queue" + queue_id, JSON.stringify(params.data));
 }
 
 export async function getBalanceForUsers(userDetails: userDetailsType) {
