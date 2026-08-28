@@ -8,7 +8,7 @@ import { untilWeGotBack } from "../utilites/untilWeGotBack";
 import { orderRequest } from "../schemas/order.schema";
 import { sendEngine } from "../utilites/sendEngine";
 import { EngineRequest } from "../types/engine.types";
-import type { returnedCreateOrderDataType, returnedDataType, UserBalance } from "../types/order.types";
+import type { returnedCreateOrderDataType, UserBalance } from "../types/order.types";
 import { createFillsAndUpdateOrder, createOrderInDb } from "../utilites/orderHelpers";
 import { queue_id } from "../constants";
 import { STATUS } from "../../generated/prisma/enums";
@@ -51,6 +51,7 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
     let pendingResponse = untilWeGotBack(identifier);
     await sendEngine({
         identifier,
+        requestType: "cancelOrder",
         "cancelOrderDetails": {
             orderId,
             queue_id
@@ -117,8 +118,10 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
     let pendingResponse = untilWeGotBack(identifier);
 
     sendEngine({
-        RequestType: EngineRequest.CREATEORDER,
-        userId, type, price, qty, market_id, side, queue_id: queue_id, identifier
+        requestType: "createOrder",
+        identifier,
+        orderDetails:
+            { userId, type, price, qty, market_id, side, queue_id: queue_id, identifier }
     });
     const returnedData: returnedCreateOrderDataType = await pendingResponse;
 
@@ -164,6 +167,7 @@ export const getBalance = asyncHandler(async (req: Request, res: Response) => {
     let pendingResponse = untilWeGotBack(identifier);
     await sendEngine({
         identifier,
+        requestType: "getBalance",
         "userDetails": {
             userId: req.userId,
             queue_id
