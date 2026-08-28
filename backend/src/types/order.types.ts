@@ -14,13 +14,13 @@ export interface fill {
     price: number
 }
 
-export interface returnedDataType {
+export interface returnedCreateOrderDataType {
+    identifier:number,
     error: ApiError,
     filledQty: number,
     fills: fill[],
     orderId: number,
     totalPrice: number
-
 }
 
 export interface createOrderParams {
@@ -32,4 +32,12 @@ export interface createOrderParams {
     price: number | undefined,
     qty: number,
     filledQty: number,
+}
+
+export interface UserBalance {
+    balances:
+    {
+        available: number,
+        locked: number
+    }
 }

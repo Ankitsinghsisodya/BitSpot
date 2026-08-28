@@ -1,5 +1,5 @@
 import { createClient } from "redis";
-import { number, z } from "zod";
+import { z } from "zod";
 
 const BALANCES: balancesTypes = {}
 interface balancesTypes {
@@ -179,7 +179,7 @@ function updateOrderBook(userId: number, qty: number, price: number, side: "ASK"
     let fills: fill[] = [];
     let totalPrice = 0;
     // >> price se jada wala me le lenge
-    const sortedEntries = [...temp.entries()].sort(([a], [b]) =>((side==="ASK") ?a-b:b-a));
+    const sortedEntries = [...temp.entries()].sort(([a], [b]) => ((side === "ASK") ? a - b : b - a));
     for (const [pricePerItem, DetailOfItem] of sortedEntries) {
         // x, x-1, x-2
         if (side === "ASK" && Number(pricePerItem) < price) break;
@@ -203,7 +203,7 @@ function updateOrderBook(userId: number, qty: number, price: number, side: "ASK"
                 qtyConsumed += orderItem.qty;
                 BALANCES[userId]!.locked -= orderItem.price;
             }
-            else if(orderItem.price <= BALANCES[userId]!.locked){
+            else if (orderItem.price <= BALANCES[userId]!.locked) {
                 fills.push({
                     ...userIdDetails(userId, orderItem.userId, side),
                     stocks: market_id,
@@ -268,19 +268,16 @@ interface errorType {
     status: number,
     message: string
 }
-while (true) {
-    const response = await subscriberClient.brPop('incoming-order', 1);
-    if (!response) {
-        continue;
-    }
-    const parsedResponse: orderRequestType = JSON.parse(response.element);
+
+async function createOrder(orderDetails: orderRequestType) {
+    // const parsedResponse: orderRequestType = JSON.parse(response.element);
 
     // error
     const error: APiError[] = [];
 
     // ask -> infinity
     // bid ->
-    let { userId, type, price, qty, market_id, side, queue_id, identifer } = parsedResponse;
+    let { userId, type, price, qty, market_id, side, queue_id, identifer } = orderDetails;
     if (type === "market")
         price = (side === "ASK") ? -Infinity : Infinity;
 
@@ -311,10 +308,79 @@ while (true) {
         unlockBalance(userId);
     }
 
-    // sending it back to the backend
-    await publisherClient.lPush("Response-queue" + parsedResponse.queue_id, JSON.stringify({
-        error, filledQty, totalPrice, fills, identifer, orderId
-    }))
+    await sendtoBackend(orderDetails.queue_id, {
+        data: {
+            identifier: orderDetails.identifer,
+            error, filledQty, totalPrice, fills, identifer, orderId
+        }
+    })
+}
+
+async function sendtoBackend(queue_id: number, params: { data: { identifier: number, [key: string]: any } }) {
+    await publisherClient.lPush("Response-queue" + queue_id, JSON.stringify(params.data));
+}
+interface userDetailsType {
+    userId: number,
+    queue_id: number,
+    identifier:number
+}
+async function getBalanceForUsers(userDetails: userDetailsType) {
+    const balances = BALANCES[userDetails.userId]
+    await sendtoBackend(userDetails.queue_id, {
+        data: {
+            identifier: userDetails.identifier,
+            balances
+        }
+    });
+};
+
+
+interface cancelOrderDetailsType {
+    orderId: number,
+    queue_id: number,
+    identifier: number
+}
+function cancelOrder(cancelOrderDetails: cancelOrderDetailsType) {
+    for (const [_, stocksDetails] of Object.entries(ORDERBOOK)) {
+        for (const [_, OrderDetails] of Object.entries(stocksDetails)) {
+            for (const [price, priceWiseOrderDetails] of OrderDetails) {
+
+                priceWiseOrderDetails.orders.filter((order: orderItem) => {
+                    if (order.orderId === cancelOrderDetails.orderId) {
+                        priceWiseOrderDetails.totalQty -= order.qty;
+                    }
+                    return (order.orderId === cancelOrderDetails.orderId)
+                });
+
+            }
+        }
+    }
+    sendtoBackend(cancelOrderDetails.queue_id, {
+        data: { identifier: cancelOrderDetails.identifier, success: true }
+    })
+};
+
+while (true) {
+    const response = await subscriberClient.brPop('incoming-request', 1); // change the queue name
+    if (!response) {
+        continue;
+    }
+    const parsedResponse = JSON.parse(response.element);
+
+    switch (parsedResponse.requestType) {
+        case "createOrder":
+            await createOrder(parsedResponse.orderDetails);
+            break;
+        case "getBalance":
+            getBalanceForUsers(parsedResponse.userDetails);
+            break;
+        case "cancelOrder":
+            cancelOrder(parsedResponse.cancelOrderDetails);
+            break;
+        default:
+            break;
+    }
+
 }
 
 

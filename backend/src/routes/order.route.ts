@@ -1,15 +1,16 @@
 import Router from "express"
-import { createOrder, deleteOrder, getFillForSymbol } from "../controller/order.controller";
+import { cancelOrder, createOrder, getBalance, getFillForSymbol, getOrder } from "../controller/order.controller";
 
 const router = Router();
 
-router.get("/stocks",);
-router.get("/balance",);
-router.get("/orders",);
-router.get("/orderbook/:symbol",);
+// db
+router.get("/orders",getOrder); 
 router.get("/fills/:symbol", getFillForSymbol);
-router.delete("order/:orderId", deleteOrder);
+
+
 router.post("/order", createOrder);
+router.get("/balance", getBalance); // orderbook
+router.delete("order/:orderId", cancelOrder);
 
 
 export default router

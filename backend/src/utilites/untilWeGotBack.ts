@@ -1,6 +1,4 @@
-import type { Value } from "@prisma/client/runtime/client";
 import { createClient } from "redis";
-import type { returnedDataType } from "../types/order.types";
 import { queue_id, QUEUE_NAMES } from "../constants";
 
 
@@ -13,7 +11,7 @@ const publisherClient = await createClient()
     .connect();
 
 interface pendingResolvesType {
-    [key: number]: (value: returnedDataType) => void
+    [key: number]: (value: any) => void
 }
 let pendingResolves: pendingResolvesType = {
 };
@@ -27,16 +25,11 @@ async function pollQueue() {
     }
     else {
         const parsedResponse = JSON.parse(response.element);
-        if (parsedResponse.identifier && pendingResolves[parsedResponse.identifier]) {
+        if (parsedResponse.data.identifier && pendingResolves[parsedResponse.data.identifier]) {
             const resolver = pendingResolves[parsedResponse.identifier];
             if (resolver)
-                resolver({
-                    error: parsedResponse.error,
-                    totalPrice: parsedResponse.totalPrice,
-                    filledQty: parsedResponse.filledQty,
-                    fills: parsedResponse.fills,
-                    orderId: parsedResponse.orderId
-                }
+                resolver(
+                    parsedResponse.data
                 );
         }
     }
@@ -44,7 +37,7 @@ async function pollQueue() {
 
 pollQueue();
 
-export async function untilWeGotBack(identifier: number): Promise<returnedDataType> {
+export async function untilWeGotBack(identifier: number): Promise<any> {
     return new Promise((resolve, reject) => {
         pendingResolves[identifier] = resolve;
     })
