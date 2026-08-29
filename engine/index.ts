@@ -41,5 +41,4 @@ while (true) {
             }
         }).catch(err => console.error("Failed to notify backend of error:", err));
     }
-
 }
