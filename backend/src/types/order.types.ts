@@ -15,8 +15,8 @@ export interface fill {
 }
 
 export interface returnedCreateOrderDataType {
-    identifier:number,
-    error: ApiError,
+    identifier: number,
+    error?: [ApiError],
     filledQty: number,
     fills: fill[],
     orderId: number,
@@ -35,9 +35,15 @@ export interface createOrderParams {
 }
 
 export interface UserBalance {
+    error?: [ApiError],
     balances:
     {
         available: number,
         locked: number
     }
+}
+
+export interface cancelOrderResponse {
+    error?: [ApiError],
+    success:boolean
 }

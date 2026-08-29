@@ -7,7 +7,7 @@ import * as z from "zod";
 import { untilWeGotBack } from "../utilites/untilWeGotBack";
 import { orderRequest } from "../schemas/order.schema";
 import { sendEngine } from "../utilites/sendEngine";
-import type { returnedCreateOrderDataType, UserBalance } from "../types/order.types";
+import type { cancelOrderResponse, returnedCreateOrderDataType, UserBalance } from "../types/order.types";
 import { createFillsAndUpdateOrder, createOrderInDb } from "../utilites/orderHelpers";
 import { queue_id } from "../constants";
 import { STATUS } from "../../generated/prisma/enums";
@@ -42,7 +42,7 @@ export const getFillForSymbol = asyncHandler(async (req: Request, res: Response)
 // send the message to the engine to delete the order and marks the status of the order to be cancelled in db
 // and also send some error object to the engine to know if the deletion in orderbook is successful or not
 export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
-    const  orderId  = req.params.id;
+    const orderId = req.params.id;
     if (!orderId || typeof orderId !== "number") {
         throw new ApiError(400, "The orderId is not valid")
     }
@@ -56,7 +56,12 @@ export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
             queue_id
         }
     })
-    const response = await pendingResponse;
+    const response: cancelOrderResponse = await pendingResponse;
+    if (response.error && response.error.length > 0) {
+        // [new APiError(500, "Internal engine while processing order")]
+        throw new ApiError(500, "Internal engine error", response.error);
+
+    }
     if (response.success) {
         await prisma.orders.update({
             where: {
@@ -123,7 +128,11 @@ export const createOrder = asyncHandler(async (req: Request, res: Response) => {
             { userId, type, price, qty, market_id, side, queue_id: queue_id, identifier }
     });
     const returnedData: returnedCreateOrderDataType = await pendingResponse;
+    if (returnedData.error && returnedData.error.length > 0) {
+        // [new APiError(500, "Internal engine while processing order")]
+        throw new ApiError(500, "Internal engine error", returnedData.error);
 
+    }
     const { filledQty, fills, orderId, totalPrice, error } = returnedData;
 
     // create order in db
@@ -173,6 +182,11 @@ export const getBalance = asyncHandler(async (req: Request, res: Response) => {
         }
     })
     const response: UserBalance = await pendingResponse;
+    if (response.error && response.error.length > 0) {
+        // [new APiError(500, "Internal engine while processing order")]
+        throw new ApiError(500, "Internal engine error", response.error);
+
+    }
     const balance = response.balances;
     return new ApiResponse(201, balance);
 
