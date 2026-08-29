@@ -1,5 +1,5 @@
 import { BALANCES, ORDERBOOK } from "../state";
-import type { returnUpdateOrderBook, fill, userIdDetailsForFills, orderItem } from "../types";
+import type { returnUpdateOrderBook, fill, userIdDetailsForFills, orderItem, priceItem } from "../types";
 
 function rev(side: "ASK" | "BID"): "ASK" | "BID" {
     return (side === "ASK") ? "BID" : "ASK";
@@ -25,7 +25,7 @@ function userIdDetails(userId: number, userSittingOnOrderBookId: number, side: "
 
 function getPriceForFill(side: "ASK" | "BID", priceForUser: number, priceForUserOnOrderbook: number): number {
     if (side === "ASK") {
-        Math.max(priceForUser, priceForUserOnOrderbook);
+        return Math.max(priceForUser, priceForUserOnOrderbook);
     }
     return Math.min(priceForUser, priceForUserOnOrderbook);
 
@@ -37,7 +37,7 @@ export function updateOrderBook(userId: number, qty: number, price: number, side
     let fills: fill[] = [];
     let totalPrice = 0;
     // >> price se jada wala me le lenge
-    const sortedEntries = [...temp.entries()].sort(([a], [b]) => ((side === "ASK") ? a - b : b - a));
+    const sortedEntries: [number, priceItem][] = [...temp.entries()].sort(([a], [b]) => ((side === "ASK") ? a - b : b - a));
     for (const [pricePerItem, DetailOfItem] of sortedEntries) {
         // x, x-1, x-2
         if (side === "ASK" && Number(pricePerItem) < price) break;
@@ -47,34 +47,34 @@ export function updateOrderBook(userId: number, qty: number, price: number, side
         const orders = DetailOfItem.orders;
         let qtyConsumed = 0;
         for (const orderItem of orders) {
-            if (qty >= filledQty + orderItem.qty && orderItem.price <= BALANCES[userId]!.locked) {
+            const cost = getPriceForFill(side, price, pricePerItem);
+
+            if (side === "ASK" || cost <= BALANCES[userId]!.locked) {
+                const affordableByBalance = side === "BID"
+                    ? Math.floor(BALANCES[userId]!.locked / cost)
+                    : Infinity;
+                const qtytaken = Math.min(orderItem.qty - orderItem.filledQty, affordableByBalance, qty - filledQty);
+                if (qtytaken <= 0) continue; // or break, since balance won't recover mid-loop
                 fills.push({
                     ...userIdDetails(userId, orderItem.userId, side),
                     stocks: market_id,
-                    qty: orderItem.qty,
-                    filledQty: orderItem.qty,
-                    orderId: orderItem.orderid,
-                    price: getPriceForFill(side, price, orderItem.price)
-                })
-                filledQty += orderItem.qty;
-                totalPrice += orderItem.qty * Number(pricePerItem);
-                qtyConsumed += orderItem.qty;
-                BALANCES[userId]!.locked -= orderItem.price;
-            }
-            else if (orderItem.price <= BALANCES[userId]!.locked) {
-                fills.push({
-                    ...userIdDetails(userId, orderItem.userId, side),
-                    stocks: market_id,
-                    qty: orderItem.qty,
-                    filledQty: orderItem.filledQty + (qty - filledQty),
-                    orderId: orderItem.orderid,
-                    price: getPriceForFill(side, price, orderItem.price)
+                    qty: qtytaken,
+                    filledQty: orderItem.filledQty + qtytaken,
+                    orderId: orderItem.orderId,
+                    price: cost
                 });
-                orderItem.filledQty = orderItem.filledQty + (qty - filledQty);
-                qtyConsumed += qty - filledQty;
-                totalPrice += (qty - filledQty) * Number(pricePerItem);
-                filledQty = qty;
-                BALANCES[userId]!.locked -= orderItem.price;
+                orderItem.filledQty = orderItem.filledQty + qtytaken;
+                qtyConsumed += qtytaken;
+                totalPrice += qtytaken * cost;
+                filledQty += qtytaken;
+                if (side === "BID") {
+                    BALANCES[userId]!.locked -= qtytaken * cost; // also: reuse `cost`, no need to recompute getPriceForFill
+                    BALANCES[orderItem.userId]!.available += qtytaken*cost;
+                }
+                else {
+                    BALANCES[userId]!.locked += qtytaken * cost; // also: reuse `cost`, no need to recompute getPriceForFill
+                    BALANCES[orderItem.userId]!.available -= qtytaken*cost;
+                }
             }
         }
         DetailOfItem.totalQuantity -= qtyConsumed;

@@ -13,10 +13,10 @@ while (true) {
             await createOrder(parsedResponse.orderDetails);
             break;
         case "getBalance":
-            getBalanceForUsers(parsedResponse.userDetails);
+            await getBalanceForUsers(parsedResponse.userDetails);
             break;
         case "cancelOrder":
-            cancelOrder(parsedResponse.cancelOrderDetails);
+            await cancelOrder(parsedResponse.cancelOrderDetails);
             break;
         default:
             break;

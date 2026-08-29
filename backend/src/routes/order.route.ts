@@ -10,7 +10,7 @@ router.get("/fills/:symbol", getFillForSymbol);
 
 router.post("/order", createOrder);
 router.get("/balance", getBalance); // orderbook
-router.delete("order/:orderId", cancelOrder);
+router.delete("/order/:orderId", cancelOrder);
 
 
 export default router

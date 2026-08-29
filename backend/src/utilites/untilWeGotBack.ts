@@ -32,6 +32,7 @@ async function pollQueue() {
                     parsedResponse.data
                 );
         }
+        pollQueue();
     }
 }
 

@@ -7,7 +7,6 @@ import * as z from "zod";
 import { untilWeGotBack } from "../utilites/untilWeGotBack";
 import { orderRequest } from "../schemas/order.schema";
 import { sendEngine } from "../utilites/sendEngine";
-import { EngineRequest } from "../types/engine.types";
 import type { returnedCreateOrderDataType, UserBalance } from "../types/order.types";
 import { createFillsAndUpdateOrder, createOrderInDb } from "../utilites/orderHelpers";
 import { queue_id } from "../constants";
@@ -43,13 +42,13 @@ export const getFillForSymbol = asyncHandler(async (req: Request, res: Response)
 // send the message to the engine to delete the order and marks the status of the order to be cancelled in db
 // and also send some error object to the engine to know if the deletion in orderbook is successful or not
 export const cancelOrder = asyncHandler(async (req: Request, res: Response) => {
-    const { orderId } = req.body;
+    const  orderId  = req.params.id;
     if (!orderId || typeof orderId !== "number") {
         throw new ApiError(400, "The orderId is not valid")
     }
     let identifier = Math.random();
     let pendingResponse = untilWeGotBack(identifier);
-    await sendEngine({
+    sendEngine({
         identifier,
         requestType: "cancelOrder",
         "cancelOrderDetails": {
@@ -155,7 +154,7 @@ export const getOrder = asyncHandler(async (req: Request, res: Response) => {
         }
     });
     return res.status(201).json({
-        success: false,
+        success: true,
         orders
     })
 });
@@ -165,7 +164,7 @@ export const getOrder = asyncHandler(async (req: Request, res: Response) => {
 export const getBalance = asyncHandler(async (req: Request, res: Response) => {
     const identifier = Math.random();
     let pendingResponse = untilWeGotBack(identifier);
-    await sendEngine({
+    sendEngine({
         identifier,
         requestType: "getBalance",
         "userDetails": {
