@@ -72,8 +72,8 @@ export function updateOrderBook(userId: number, qty: number, price: number, side
                     BALANCES[orderItem.userId]!.available += qtytaken*cost;
                 }
                 else {
-                    BALANCES[userId]!.locked += qtytaken * cost; // also: reuse `cost`, no need to recompute getPriceForFill
-                    BALANCES[orderItem.userId]!.available -= qtytaken*cost;
+                    BALANCES[userId]!.available += qtytaken * cost; // also: reuse `cost`, no need to recompute getPriceForFill
+                    BALANCES[orderItem.userId]!.locked -= qtytaken*cost;
                 }
             }
         }
