@@ -56,8 +56,8 @@ model fills {
 }
 
 enum SIDE {
-  BUY
-  SELL
+  ASK
+  BID
 }
 
 enum TYPES {

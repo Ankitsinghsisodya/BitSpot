@@ -26,7 +26,7 @@ export interface returnedCreateOrderDataType {
 export interface createOrderParams {
     userId: number,
     orderId: number,
-    side: "buy" | "sell",
+    side: "ASK" | "BID",
     type: "market" | "limit",
     stockId: number,
     price: number | undefined,

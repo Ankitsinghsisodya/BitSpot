@@ -8,9 +8,9 @@ export function getOrderStatus(filledQty: number, qty: number): STATUS {
     return STATUS.PARTIALLY;
 }
 
-export function toSideEnum(side: "buy" | "sell"): SIDE {
-    if (side === 'buy') return SIDE.BUY;
-    return SIDE.SELL;
+export function toSideEnum(side: "ASK" | "BID"): SIDE {
+    if (side === 'ASK') return SIDE.ASK;
+    return SIDE.BID;
 }
 
 export function toTypesEnum(type: "market" | "limit"): TYPES {

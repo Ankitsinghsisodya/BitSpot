@@ -5,5 +5,5 @@ export const orderRequest = z.object({
     price: z.number().optional(),
     qty: z.number(),
     market_id: z.string(),
-    side: z.enum(["buy", "sell"])
+    side: z.enum(["ASK", "BID"])
 })
