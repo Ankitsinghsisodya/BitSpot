@@ -5,5 +5,5 @@ const publisherClient = await createClient()
     .connect();
 
 export async function sendEngine(params: { identifier: number, [key: string]: any }) {
-    await publisherClient.lPush('incoming-order', JSON.stringify(params));
+    await publisherClient.lPush('incoming-request', JSON.stringify(params));
 }

@@ -90,7 +90,7 @@ export function updateOrderBook(userId: number, qty: number, price: number, side
 export function addInOrderBook(userId: number, side: "ASK" | "BID", price: number, qty: number, filledQty: number, market_id: string, orderId: number) {
     const market = getSide(market_id, side);
     if (!market.has(price)) {
-        market.set(price, { totalQuantity: 0, ordres: [] });
+        market.set(price, { totalQuantity: 0, orders: [] });
     }
     const priceLevel = market.get(price);
     priceLevel.totalQuantity += qty;

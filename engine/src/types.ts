@@ -61,6 +61,7 @@ export interface orderbookType {
 */
 
 export const orderRequest = z.object({
+    identifier: z.number(),
     userId: z.number(),
     type: z.enum(["market", "limit"]),
     price: z.number().optional(),

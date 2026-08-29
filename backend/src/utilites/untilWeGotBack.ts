@@ -26,7 +26,7 @@ async function pollQueue() {
     else {
         const parsedResponse = JSON.parse(response.element);
         if (parsedResponse.data.identifier && pendingResolves[parsedResponse.data.identifier]) {
-            const resolver = pendingResolves[parsedResponse.identifier];
+            const resolver = pendingResolves[parsedResponse.data.identifier];
             if (resolver)
                 resolver(
                     parsedResponse.data

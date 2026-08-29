@@ -13,7 +13,7 @@ export async function createOrder(orderDetails: orderRequestType) {
 
     // ask -> infinity
     // bid ->
-    let { userId, type, price, qty, market_id, side, queue_id, identifer } = orderDetails;
+    let { userId, type, price, qty, market_id, side, queue_id, identifier } = orderDetails;
     if (type === "market")
         price = (side === "ASK") ? -Infinity : Infinity;
 
@@ -46,8 +46,8 @@ export async function createOrder(orderDetails: orderRequestType) {
 
     await sendtoBackend(orderDetails.queue_id, {
         data: {
-            identifier: orderDetails.identifer,
-            error, filledQty, totalPrice, fills, identifer, orderId
+            identifier,
+            error, filledQty, totalPrice, fills, orderId
         }
     })
 }
@@ -67,9 +67,9 @@ export function cancelOrder(cancelOrderDetails: cancelOrderDetailsType) {
         for (const [_, OrderDetails] of Object.entries(stocksDetails)) {
             for (const [price, priceWiseOrderDetails] of OrderDetails) {
 
-                priceWiseOrderDetails.orders.filter((order: orderItem) => {
+                priceWiseOrderDetails.orders = priceWiseOrderDetails.orders.filter((order: orderItem) => {
                     if (order.orderId === cancelOrderDetails.orderId) {
-                        priceWiseOrderDetails.totalQty -= order.qty;
+                        priceWiseOrderDetails.totalQuantity -= order.qty;
                     }
                     return (order.orderId === cancelOrderDetails.orderId)
                 });
